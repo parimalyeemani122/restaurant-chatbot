@@ -62,11 +62,12 @@ SESSION: The session_id will be injected at the end of the user's message as [se
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { messages, sessionId, restaurantId = 'taqueria_el_coral_santa_teresa' } = body as {
+    const { messages, sessionId, restaurantId: rawRestaurantId = 'taqueria_el_coral_santa_teresa' } = body as {
       messages: Anthropic.MessageParam[];
       sessionId: string;
       restaurantId?: string;
     };
+    const restaurantId = rawRestaurantId === 'taqueria-el-coral' ? 'taqueria_el_coral_santa_teresa' : rawRestaurantId;
 
     if (!messages || !sessionId) {
       return NextResponse.json({ error: 'Missing messages or sessionId' }, { status: 400 });
