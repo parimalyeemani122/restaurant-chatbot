@@ -4,6 +4,26 @@ import { getRestaurantInfo } from './restaurant-info';
 import { sendOrderEmail } from './email';
 import { v4 as uuidv4 } from 'uuid';
 
+// ── Maya Dashboard Integration ────────────────────────────────────────────────
+
+async function postToMayaDashboard(order: Record<string, unknown>): Promise<void> {
+  const mayaUrl = process.env.MAYA_DASHBOARD_URL;
+  const ingestKey = process.env.MAYA_INGEST_KEY ?? '';
+  if (!mayaUrl) return;
+  try {
+    await fetch(`${mayaUrl}/api/orders/ingest`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(ingestKey ? { 'x-maya-ingest-key': ingestKey } : {}),
+      },
+      body: JSON.stringify({ ...order, source: 'chatbot' }),
+    });
+  } catch {
+    // Non-fatal — chatbot order is already saved locally and emailed
+  }
+}
+
 // ── Tool definitions for Claude ──────────────────────────────────────────────
 
 export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
@@ -154,7 +174,7 @@ function cartTotal(items: OrderItem[]): number {
 
 // ── Tool implementations ──────────────────────────────────────────────────────
 
-function searchMenu(query: string, category?: string, restaurantId = 'maple-table-001'): object {
+function searchMenu(query: string, category?: string, restaurantId = 'taqueria_el_coral_santa_teresa'): object {
   const db = getDb();
   const q = `%${query.toLowerCase()}%`;
   let rows: MenuItem[];
@@ -179,7 +199,7 @@ function searchMenu(query: string, category?: string, restaurantId = 'maple-tabl
   };
 }
 
-function getMenuCategories(restaurantId = 'maple-table-001'): object {
+function getMenuCategories(restaurantId = 'taqueria_el_coral_santa_teresa'): object {
   const db = getDb();
   const rows = db.prepare(
     `SELECT category, COUNT(*) as count, MIN(price) as min_price, MAX(price) as max_price FROM menu_items WHERE restaurant_id = ? AND available = 1 GROUP BY category ORDER BY category`
@@ -270,7 +290,7 @@ function removeFromOrder(itemId: string, sessionId: string): object {
 
 function placeOrder(
   customerName: string, customerPhone: string, pickupTime: string,
-  sessionId: string, restaurantId = 'maple-table-001', specialInstructions?: string
+  sessionId: string, restaurantId = 'taqueria_el_coral_santa_teresa', specialInstructions?: string
 ): object {
   const cart = orders.get(sessionId) ?? [];
   if (cart.length === 0) return { success: false, message: 'Your order is empty. Please add items before placing the order.' };
@@ -323,6 +343,27 @@ function placeOrder(
     timestamp: new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }),
   }).catch(() => { /* already logged inside sendOrderEmail */ });
 
+  // Mirror order to Maya dashboard (fire-and-forget)
+  postToMayaDashboard({
+    order_id: orderId,
+    restaurant_id: restaurantId,
+    timestamp: new Date().toISOString(),
+    customer: { name: customerName, phone: customerPhone, pickup_time: pickupTime },
+    order_type: 'standard',
+    items: cart.map(i => ({
+      menu_item_id: i.item_id,
+      name: i.name,
+      quantity: i.quantity,
+      modifiers: i.modifiers,
+      unit_price: +(i.unit_price + i.modifier_delta).toFixed(2),
+      line_total: +((i.unit_price + i.modifier_delta) * i.quantity).toFixed(2),
+    })),
+    subtotal: +total.toFixed(2),
+    estimated_prep_minutes: prep,
+    special_instructions: specialInstructions ?? '',
+    status: 'confirmed',
+  }).catch(() => {});
+
   return {
     success: true,
     order_id: shortId,
@@ -338,7 +379,7 @@ function placeOrder(
 
 function flagCatering(
   customerName: string, customerPhone: string, sessionId: string,
-  restaurantId = 'maple-table-001', eventDate?: string, headcount?: string, notes?: string
+  restaurantId = 'taqueria_el_coral_santa_teresa', eventDate?: string, headcount?: string, notes?: string
 ): object {
   const db = getDb();
   const orderId = uuidv4();
@@ -365,6 +406,20 @@ function flagCatering(
     timestamp: new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }),
   }).catch(() => {});
 
+  // Mirror catering lead to Maya dashboard (fire-and-forget)
+  postToMayaDashboard({
+    order_id: orderId,
+    restaurant_id: restaurantId,
+    timestamp: new Date().toISOString(),
+    customer: { name: customerName, phone: customerPhone, pickup_time: eventDate ?? 'TBD' },
+    order_type: 'catering',
+    items: [],
+    subtotal: 0,
+    estimated_prep_minutes: 0,
+    special_instructions: `Headcount: ${headcount ?? 'TBD'} | Notes: ${notes ?? 'None'}`,
+    status: 'pending_callback',
+  }).catch(() => {});
+
   return {
     success: true,
     order_id: cateringShortId,
@@ -389,9 +444,9 @@ export function executeTool(toolName: string, input: Record<string, unknown>): u
     case 'remove_from_order':
       return removeFromOrder(input.item_id as string, input.session_id as string);
     case 'place_order':
-      return placeOrder(input.customer_name as string, input.customer_phone as string, input.pickup_time as string, input.session_id as string, input.restaurant_id as string ?? 'maple-table-001', input.special_instructions as string | undefined);
+      return placeOrder(input.customer_name as string, input.customer_phone as string, input.pickup_time as string, input.session_id as string, input.restaurant_id as string ?? 'taqueria_el_coral_santa_teresa', input.special_instructions as string | undefined);
     case 'flag_catering':
-      return flagCatering(input.customer_name as string, input.customer_phone as string, input.session_id as string, input.restaurant_id as string ?? 'maple-table-001', input.event_date as string | undefined, input.headcount as string | undefined, input.notes as string | undefined);
+      return flagCatering(input.customer_name as string, input.customer_phone as string, input.session_id as string, input.restaurant_id as string ?? 'taqueria_el_coral_santa_teresa', input.event_date as string | undefined, input.headcount as string | undefined, input.notes as string | undefined);
     case 'get_restaurant_info':
       return { info: getRestaurantInfo(input.topic as string | undefined) };
     default:

@@ -15,7 +15,7 @@ if (!process.env.ANTHROPIC_API_KEY) {
   }
 }
 
-const SYSTEM_PROMPT = `You are Maya, a friendly AI order assistant for The Maple Table restaurant. You take food orders over chat, just like a real server would.
+const SYSTEM_PROMPT = `You are Maya, a friendly AI order assistant for Taqueria El Coral, a family-owned Mexican restaurant in San Jose, CA. You take food orders over chat, just like a real server would.
 
 PERSONALITY:
 - Warm, efficient, and conversational — not robotic
@@ -57,12 +57,12 @@ HARD RULES:
 - NEVER be rude or dismissive
 - ONE upsell attempt maximum per conversation
 
-SESSION: The session_id will be injected at the end of the user's message as [session_id: xxx]. Extract it and pass it to all order tools. The restaurant_id is "maple-table-001" unless specified otherwise.`;
+SESSION: The session_id will be injected at the end of the user's message as [session_id: xxx]. Extract it and pass it to all order tools. The restaurant_id is "taqueria_el_coral_santa_teresa" unless specified otherwise.`;
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { messages, sessionId, restaurantId = 'maple-table-001' } = body as {
+    const { messages, sessionId, restaurantId = 'taqueria_el_coral_santa_teresa' } = body as {
       messages: Anthropic.MessageParam[];
       sessionId: string;
       restaurantId?: string;
