@@ -14,7 +14,7 @@
   'use strict';
 
   const script = document.currentScript;
-  const restaurantId = script?.getAttribute('data-restaurant') || 'maple-table-001';
+  const restaurantId = script?.getAttribute('data-restaurant') || 'taqueria_el_coral_santa_teresa';
   const restaurantName = script?.getAttribute('data-name') || 'Our Restaurant';
   const primaryColor = script?.getAttribute('data-color') || '#92400e';
   const position = script?.getAttribute('data-position') || 'right';

@@ -72,9 +72,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing messages or sessionId' }, { status: 400 });
     }
 
+    // Strip any leading assistant messages — Anthropic requires first message to be user
+    const trimmed = [...messages];
+    while (trimmed.length > 0 && trimmed[0].role !== 'user') trimmed.shift();
+
+    if (trimmed.length === 0) {
+      return NextResponse.json({ error: 'No user message found' }, { status: 400 });
+    }
+
     // Inject session context into last user message
-    const augmented: Anthropic.MessageParam[] = messages.map((msg, idx) => {
-      if (idx === messages.length - 1 && msg.role === 'user') {
+    const augmented: Anthropic.MessageParam[] = trimmed.map((msg, idx) => {
+      if (idx === trimmed.length - 1 && msg.role === 'user') {
         const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
         return { ...msg, content: `${content}\n\n[session_id: ${sessionId}] [restaurant_id: ${restaurantId}]` };
       }
