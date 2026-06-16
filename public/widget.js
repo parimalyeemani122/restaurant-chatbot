@@ -32,10 +32,10 @@
   // ── Conversation history ─────────────────────────────────────────────────────
   const HISTORY_KEY = `maya_history_${restaurantId}`;
   function loadHistory() {
-    try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; }
+    try { return JSON.parse(sessionStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; }
   }
   function saveHistory(h) {
-    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(h.slice(-40))); } catch {}
+    try { sessionStorage.setItem(HISTORY_KEY, JSON.stringify(h.slice(-40))); } catch {}
   }
   let history = loadHistory();
 

@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 
-const DB_PATH = path.join(process.cwd(), 'db', 'restaurant.db');
+const DB_PATH = process.env.DATABASE_PATH || path.join(process.cwd(), 'db', 'restaurant.db');
 const SCHEMA_PATH = path.join(process.cwd(), 'db', 'schema.sql');
 
 let _db: Database.Database | null = null;

@@ -3,13 +3,22 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 
-const DB_PATH = path.join(process.cwd(), 'db', 'restaurant.db');
+const DB_PATH = process.env.DATABASE_PATH || path.join(process.cwd(), 'db', 'restaurant.db');
 const SCHEMA_PATH = path.join(process.cwd(), 'db', 'schema.sql');
+
+// Ensure directory exists (needed when DATABASE_PATH points to /data on Railway)
+const dir = path.dirname(DB_PATH);
+if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
 const db = new Database(DB_PATH);
 db.exec(fs.readFileSync(SCHEMA_PATH, 'utf-8'));
 
 const RESTAURANT_ID = 'taqueria_el_coral_santa_teresa';
+
+// Deterministic item ID so INSERT OR REPLACE is idempotent across deploys
+function itemId(name: string): string {
+  return `${RESTAURANT_ID}_${name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/, '')}`;
+}
 
 db.prepare(`INSERT OR REPLACE INTO restaurants (id, name, phone, email, address, hours, prep_time_minutes, catering_threshold_dollars) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
   .run(
@@ -245,7 +254,7 @@ const insertItem = db.prepare(`
 
 const seedAll = db.transaction(() => {
   for (const item of items) {
-    insertItem.run(uuidv4(), RESTAURANT_ID, item.name, item.category, item.description, item.price, JSON.stringify(item.modifiers));
+    insertItem.run(itemId(item.name), RESTAURANT_ID, item.name, item.category, item.description, item.price, JSON.stringify(item.modifiers));
   }
 });
 
