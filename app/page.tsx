@@ -52,7 +52,7 @@ export default function Home() {
     {
       id: '0',
       role: 'assistant',
-      content: "Welcome to The Maple Table! I'm Maya, your order assistant. I can help you browse our menu, take your order, or answer any questions. What can I get started for you today?",
+      content: "Welcome to Taqueria El Coral! I'm Maya, your order assistant. I can help you browse our menu, take your order, or answer any questions. What can I get started for you today?",
       timestamp: new Date(),
     },
   ]);
@@ -95,7 +95,7 @@ export default function Home() {
         body: JSON.stringify({
           messages: updated.map(m => ({ role: m.role, content: m.content })),
           sessionId,
-          restaurantId: 'maple-table-001',
+          restaurantId: 'taqueria_el_coral_santa_teresa',
         }),
       });
       const data = await res.json();
@@ -114,7 +114,7 @@ export default function Home() {
     }
   }
 
-  const quickPrompts = ["See the full menu", "What's good here?", "Do you have vegetarian options?", "I want to place an order"];
+  const quickPrompts = ["Show me the taco menu", "What's your most popular dish?", "Do you have vegetarian options?", "I'd like to place an order"];
   const itemCount = order.items.reduce((s, i) => s + i.quantity, 0);
 
   return (
@@ -127,7 +127,7 @@ export default function Home() {
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-amber-700 flex items-center justify-center text-white font-bold text-base">M</div>
             <div>
-              <h1 className="font-semibold text-stone-900 text-base leading-tight">The Maple Table</h1>
+              <h1 className="font-semibold text-stone-900 text-base leading-tight">Taqueria El Coral</h1>
               <p className="text-xs text-amber-700 font-medium">Maya · AI Order Assistant</p>
             </div>
           </div>

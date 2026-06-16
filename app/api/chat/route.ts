@@ -62,12 +62,11 @@ SESSION: The session_id will be injected at the end of the user's message as [se
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { messages, sessionId, restaurantId: rawRestaurantId = 'taqueria_el_coral_santa_teresa' } = body as {
+    const { messages, sessionId, restaurantId = 'taqueria_el_coral_santa_teresa' } = body as {
       messages: Anthropic.MessageParam[];
       sessionId: string;
       restaurantId?: string;
     };
-    const restaurantId = rawRestaurantId === 'taqueria-el-coral' ? 'taqueria_el_coral_santa_teresa' : rawRestaurantId;
 
     if (!messages || !sessionId) {
       return NextResponse.json({ error: 'Missing messages or sessionId' }, { status: 400 });
@@ -82,10 +81,13 @@ export async function POST(req: NextRequest) {
       return msg;
     });
 
+    const MODEL = 'claude-sonnet-4-6';
+    const MAX_TOKENS = 2048; // order readback + multi-item confirmation can exceed 1024
+
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     let response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
-      max_tokens: 1024,
+      model: MODEL,
+      max_tokens: MAX_TOKENS,
       system: SYSTEM_PROMPT,
       tools: TOOL_DEFINITIONS,
       messages: augmented,
@@ -112,8 +114,8 @@ export async function POST(req: NextRequest) {
       ];
 
       response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-5',
-        max_tokens: 1024,
+        model: MODEL,
+        max_tokens: MAX_TOKENS,
         system: SYSTEM_PROMPT,
         tools: TOOL_DEFINITIONS,
         messages: loopMessages,
