@@ -9,9 +9,14 @@ import { v4 as uuidv4 } from 'uuid';
 async function postToMayaDashboard(order: Record<string, unknown>): Promise<void> {
   const mayaUrl = process.env.MAYA_DASHBOARD_URL;
   const ingestKey = process.env.MAYA_INGEST_KEY ?? '';
-  if (!mayaUrl) return;
+  if (!mayaUrl) {
+    console.warn('[Maya] MAYA_DASHBOARD_URL not set — skipping dashboard push');
+    return;
+  }
+  const url = `${mayaUrl}/api/orders/ingest`;
+  console.log(`[Maya] Posting order ${order.order_id} to ${url}`);
   try {
-    await fetch(`${mayaUrl}/api/orders/ingest`, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -19,8 +24,14 @@ async function postToMayaDashboard(order: Record<string, unknown>): Promise<void
       },
       body: JSON.stringify({ ...order, source: 'chatbot' }),
     });
-  } catch {
-    // Non-fatal — chatbot order is already saved locally and emailed
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      console.error(`[Maya] Ingest failed — status ${res.status}: ${body}`);
+    } else {
+      console.log(`[Maya] Order ${order.order_id} delivered to dashboard ✓`);
+    }
+  } catch (err) {
+    console.error('[Maya] Ingest fetch error:', err);
   }
 }
 
@@ -288,10 +299,10 @@ function removeFromOrder(itemId: string, sessionId: string): object {
   return { success: true, message: `Removed ${removed.name} from your order.`, order_total: `$${cartTotal(cart).toFixed(2)}` };
 }
 
-function placeOrder(
+async function placeOrder(
   customerName: string, customerPhone: string, pickupTime: string,
   sessionId: string, restaurantId = 'taqueria_el_coral_santa_teresa', specialInstructions?: string
-): object {
+): Promise<object> {
   const cart = orders.get(sessionId) ?? [];
   if (cart.length === 0) return { success: false, message: 'Your order is empty. Please add items before placing the order.' };
 
@@ -343,8 +354,8 @@ function placeOrder(
     timestamp: new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }),
   }).catch(() => { /* already logged inside sendOrderEmail */ });
 
-  // Mirror order to Maya dashboard (fire-and-forget)
-  postToMayaDashboard({
+  // Mirror order to Maya dashboard (awaited so it completes before the tool response returns)
+  await postToMayaDashboard({
     order_id: orderId,
     restaurant_id: restaurantId,
     timestamp: new Date().toISOString(),
@@ -362,7 +373,7 @@ function placeOrder(
     estimated_prep_minutes: prep,
     special_instructions: specialInstructions ?? '',
     status: 'confirmed',
-  }).catch(() => {});
+  });
 
   return {
     success: true,
@@ -377,10 +388,10 @@ function placeOrder(
   };
 }
 
-function flagCatering(
+async function flagCatering(
   customerName: string, customerPhone: string, sessionId: string,
   restaurantId = 'taqueria_el_coral_santa_teresa', eventDate?: string, headcount?: string, notes?: string
-): object {
+): Promise<object> {
   const db = getDb();
   const orderId = uuidv4();
   db.prepare(`INSERT INTO orders (id, restaurant_id, session_id, customer_name, customer_phone, pickup_time, order_type, status, subtotal, special_instructions)
@@ -406,8 +417,7 @@ function flagCatering(
     timestamp: new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }),
   }).catch(() => {});
 
-  // Mirror catering lead to Maya dashboard (fire-and-forget)
-  postToMayaDashboard({
+  await postToMayaDashboard({
     order_id: orderId,
     restaurant_id: restaurantId,
     timestamp: new Date().toISOString(),
@@ -418,7 +428,7 @@ function flagCatering(
     estimated_prep_minutes: 0,
     special_instructions: `Headcount: ${headcount ?? 'TBD'} | Notes: ${notes ?? 'None'}`,
     status: 'pending_callback',
-  }).catch(() => {});
+  });
 
   return {
     success: true,
@@ -429,7 +439,7 @@ function flagCatering(
 
 // ── Dispatch ─────────────────────────────────────────────────────────────────
 
-export function executeTool(toolName: string, input: Record<string, unknown>): unknown {
+export async function executeTool(toolName: string, input: Record<string, unknown>): Promise<unknown> {
   switch (toolName) {
     case 'search_menu':
       return searchMenu(input.query as string, input.category as string | undefined, input.restaurant_id as string | undefined);

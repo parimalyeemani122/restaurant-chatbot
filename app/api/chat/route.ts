@@ -95,15 +95,15 @@ export async function POST(req: NextRequest) {
     let loopMessages = [...augmented];
     while (response.stop_reason === 'tool_use') {
       const toolUseBlocks = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
-      const results: Anthropic.ToolResultBlockParam[] = toolUseBlocks.map(block => {
+      const results: Anthropic.ToolResultBlockParam[] = await Promise.all(toolUseBlocks.map(async block => {
         let result: unknown;
         try {
-          result = executeTool(block.name, block.input as Record<string, unknown>);
+          result = await executeTool(block.name, block.input as Record<string, unknown>);
         } catch (err) {
           result = { error: err instanceof Error ? err.message : 'Tool execution failed' };
         }
         return { type: 'tool_result' as const, tool_use_id: block.id, content: JSON.stringify(result) };
-      });
+      }));
 
       loopMessages = [
         ...loopMessages,
