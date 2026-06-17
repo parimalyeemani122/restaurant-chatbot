@@ -193,18 +193,18 @@
   container.innerHTML = html;
   document.body.appendChild(container);
 
-  // ── Elements ─────────────────────────────────────────────────────────────────
-  const btn = document.getElementById('maya-widget-btn');
-  const panel = document.getElementById('maya-widget-panel');
-  const closeBtn = document.getElementById('maya-close');
-  const messagesEl = document.getElementById('maya-messages');
-  const inputEl = document.getElementById('maya-input');
-  const sendBtn = document.getElementById('maya-send');
-  const quickPrompts = document.querySelectorAll('.maya-quick-btn');
-  const orderBar = document.getElementById('maya-order-bar');
-  const itemCountEl = document.getElementById('maya-item-count');
-  const orderTotalEl = document.getElementById('maya-order-total');
-  const badgeEl = document.getElementById('maya-badge');
+  // ── Elements (scoped to container — host pages may have duplicate IDs) ────────
+  const btn = container.querySelector('#maya-widget-btn');
+  const panel = container.querySelector('#maya-widget-panel');
+  const closeBtn = container.querySelector('#maya-close');
+  const messagesEl = container.querySelector('#maya-messages');
+  const inputEl = container.querySelector('#maya-input');
+  const sendBtn = container.querySelector('#maya-send');
+  const quickPrompts = container.querySelectorAll('.maya-quick-btn');
+  const orderBar = container.querySelector('#maya-order-bar');
+  const itemCountEl = container.querySelector('#maya-item-count');
+  const orderTotalEl = container.querySelector('#maya-order-total');
+  const badgeEl = container.querySelector('#maya-badge');
 
   let isOpen = false;
   let isLoading = false;
@@ -267,7 +267,7 @@
   }
 
   function removeTyping() {
-    const t = document.getElementById('maya-typing');
+    const t = messagesEl.querySelector('#maya-typing');
     if (t) t.remove();
   }
 
@@ -276,7 +276,7 @@
   }
 
   // ── Quick prompts ────────────────────────────────────────────────────────────
-  const quickEl = document.getElementById('maya-quick-prompts');
+  const quickEl = container.querySelector('#maya-quick-prompts');
   quickPrompts.forEach(btn => {
     btn.addEventListener('click', () => {
       sendMessage(btn.textContent);
