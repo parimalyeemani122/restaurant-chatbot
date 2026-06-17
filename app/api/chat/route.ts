@@ -130,20 +130,26 @@ export async function POST(req: NextRequest) {
 
     const MODEL = 'claude-sonnet-4-6';
     const MAX_TOKENS = 2048; // order readback + multi-item confirmation can exceed 1024
+    const MAX_TOOL_ITERATIONS = 8; // safety cap — prevents infinite loops on tool errors
+
+    // Cap history sent to API at last 20 messages to bound token cost for long conversations
+    const capped = augmented.slice(-20);
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const systemPrompt = buildSystemPrompt();
     let response = await anthropic.messages.create({
       model: MODEL,
       max_tokens: MAX_TOKENS,
-      system: buildSystemPrompt(),
+      system: systemPrompt,
       tools: TOOL_DEFINITIONS,
-      messages: augmented,
+      messages: capped,
     });
 
-    // Agentic tool loop
-    const systemPrompt = buildSystemPrompt(); // build once per request for the tool loop
-    let loopMessages = [...augmented];
-    while (response.stop_reason === 'tool_use') {
+    // Agentic tool loop — capped at MAX_TOOL_ITERATIONS to prevent runaway loops
+    let loopMessages = [...capped];
+    let iterations = 0;
+    while (response.stop_reason === 'tool_use' && iterations < MAX_TOOL_ITERATIONS) {
+      iterations++;
       const toolUseBlocks = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
       const results: Anthropic.ToolResultBlockParam[] = await Promise.all(toolUseBlocks.map(async block => {
         let result: unknown;

@@ -247,12 +247,24 @@
     scrollBottom();
   }
 
+  function renderText(text) {
+    // Convert basic markdown to HTML safely — bold, line breaks only
+    return text
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br>');
+  }
+
   function appendBubble(type, text, scroll = true) {
     const row = document.createElement('div');
     row.className = `maya-msg ${type === 'user' ? 'user' : ''}`;
     const bubble = document.createElement('div');
     bubble.className = `maya-bubble ${type}`;
-    bubble.textContent = text;
+    if (type === 'bot') {
+      bubble.innerHTML = renderText(text);
+    } else {
+      bubble.textContent = text; // user text: never treat as HTML
+    }
     row.appendChild(bubble);
     messagesEl.appendChild(row);
     if (scroll) scrollBottom();
@@ -312,12 +324,16 @@
     isLoading = true;
     appendTyping();
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45000); // 45s timeout
     try {
       const res = await fetch(`${apiBase}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: history, sessionId, restaurantId }),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
       const data = await res.json();
       removeTyping();
       const reply = data.message || "Sorry, something went wrong. Please try again!";
@@ -325,9 +341,13 @@
       history.push({ role: 'assistant', content: reply });
       saveHistory(history);
       refreshOrderBar();
-    } catch {
+    } catch (err) {
+      clearTimeout(timeout);
       removeTyping();
-      appendBubble('bot', "I'm having a moment — please try again!");
+      const msg = err && err.name === 'AbortError'
+        ? "That's taking longer than usual — please try again in a moment."
+        : "I'm having a moment — please try again!";
+      appendBubble('bot', msg);
     } finally {
       isLoading = false;
       sendBtn.disabled = !inputEl.value.trim();

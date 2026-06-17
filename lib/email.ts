@@ -83,7 +83,7 @@ function buildOrderHtml(o: OrderEmailPayload): string {
 
   <!-- Header -->
   <tr><td style="background:#92400e;padding:24px 32px;">
-    <h1 style="margin:0;color:#fff;font-size:22px;font-weight:700;">🍁 ${o.restaurant_name}</h1>
+    <h1 style="margin:0;color:#fff;font-size:22px;font-weight:700;">🌮 ${o.restaurant_name}</h1>
     <p style="margin:4px 0 0;color:rgba(255,255,255,.85);font-size:14px;">
       ${o.order_type === 'catering' ? '🎉 Catering Request' : '🛎️ New Order'} · ${o.timestamp}
     </p>
@@ -160,7 +160,7 @@ function buildCateringHtml(o: OrderEmailPayload): string {
 <body style="font-family:sans-serif;background:#fafaf9;padding:32px 16px;">
 <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08);">
   <div style="background:#92400e;padding:24px 32px;">
-    <h1 style="margin:0;color:#fff;font-size:22px;">🍁 ${o.restaurant_name} — Catering Request</h1>
+    <h1 style="margin:0;color:#fff;font-size:22px;">🌮 ${o.restaurant_name} — Catering Request</h1>
     <p style="margin:4px 0 0;color:rgba(255,255,255,.8);font-size:14px;">${o.timestamp}</p>
   </div>
   <div style="padding:24px 32px;">

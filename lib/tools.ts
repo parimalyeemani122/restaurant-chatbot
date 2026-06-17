@@ -342,6 +342,12 @@ async function placeOrder(
   const cart = orders.get(sessionId) ?? [];
   if (cart.length === 0) return { success: false, message: 'Your order is empty. Please add items before placing the order.' };
 
+  // Basic phone validation — must have at least 10 digits
+  const digits = customerPhone.replace(/\D/g, '');
+  if (digits.length < 10) {
+    return { success: false, message: `"${customerPhone}" doesn't look like a valid phone number. Please ask the customer for their 10-digit phone number.` };
+  }
+
   const subtotal = cartTotal(cart);
   const tax = +(subtotal * TAX_RATE).toFixed(2);
   const orderTotal = +(subtotal + tax + SERVICE_FEE).toFixed(2);

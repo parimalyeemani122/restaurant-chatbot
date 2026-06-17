@@ -1,8 +1,14 @@
 export const RESTAURANT_FAQ: Record<string, string> = {
-  hours: `We're open 7 days a week:
-• Monday–Friday: 10:00 AM – 8:30 PM
+  hours: `Our hours vary by location:
+
+**Santa Teresa Blvd** (5899 Santa Teresa Blvd #109):
+• Monday – Friday: 10:00 AM – 8:00 PM
 • Saturday: 10:00 AM – 4:00 PM
-• Sunday: 10:00 AM – 4:00 PM`,
+• Sunday: Closed
+
+**Capitol Expressway** (426 W Capitol Expy):
+• Monday – Thursday: 10:00 AM – 9:00 PM
+• Friday – Sunday: 9:00 AM – 9:00 PM`,
 
   location: `We have two locations in San Jose:
 • **Santa Teresa**: 5899 Santa Teresa Blvd #109, San Jose, CA 95123
