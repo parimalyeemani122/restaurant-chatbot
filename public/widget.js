@@ -37,7 +37,8 @@
   function saveHistory(h) {
     try { sessionStorage.setItem(HISTORY_KEY, JSON.stringify(h.slice(-40))); } catch {}
   }
-  let history = loadHistory();
+  try { sessionStorage.removeItem(HISTORY_KEY); } catch {} // always fresh on page load
+  let history = [];
 
   // ── Styles ──────────────────────────────────────────────────────────────────
   const css = `
