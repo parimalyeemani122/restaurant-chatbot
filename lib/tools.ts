@@ -1,8 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { getDb, MenuItem, Restaurant } from './db';
+import { getDb, MenuItem, Order, Restaurant } from './db';
 import { getRestaurantInfo } from './restaurant-info';
 import { sendOrderEmail } from './email';
 import { v4 as uuidv4 } from 'uuid';
+
+const TAX_RATE = 0.0925; // San Jose, CA sales tax (matches website)
+const SERVICE_FEE = 0.99;
 
 // ── Maya Dashboard Integration ────────────────────────────────────────────────
 
@@ -158,6 +161,18 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
       },
     },
   },
+  {
+    name: 'void_order',
+    description: 'Cancel a previously placed order (by its short 8-character order ID) and restore the cart so the customer can correct and re-place it. Use this ONLY when the customer reports an error after place_order was already called.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        short_order_id: { type: 'string', description: 'The 8-character order ID shown to the customer after place_order (e.g. "A1B2C3D4")' },
+        session_id: { type: 'string', description: 'Session ID' },
+      },
+      required: ['short_order_id', 'session_id'],
+    },
+  },
 ];
 
 // ── In-memory order store (per session) ──────────────────────────────────────
@@ -170,6 +185,17 @@ interface OrderItem {
   unit_price: number;
   modifier_delta: number;
   special_note?: string;
+}
+
+interface OrderItemRow {
+  id: string;
+  order_id: string;
+  menu_item_id: string;
+  item_name: string;
+  quantity: number;
+  modifiers: string; // JSON
+  unit_price: number;
+  line_total: number;
 }
 
 const orders = new Map<string, OrderItem[]>();
@@ -269,8 +295,15 @@ function addToOrder(itemId: string, sessionId: string, quantity = 1, modifiers: 
 
 function viewOrder(sessionId: string): object {
   const cart = orders.get(sessionId) ?? [];
-  if (cart.length === 0) return { empty: true, items: [], total: 0 };
-  const total = cartTotal(cart);
+  if (cart.length === 0) {
+    return {
+      empty: true, items: [],
+      subtotal: '$0.00', tax: '$0.00', service_fee: `$${SERVICE_FEE.toFixed(2)}`, total: `$${SERVICE_FEE.toFixed(2)}`,
+    };
+  }
+  const subtotal = cartTotal(cart);
+  const tax = subtotal * TAX_RATE;
+  const total = subtotal + tax + SERVICE_FEE;
   return {
     empty: false,
     items: cart.map(i => ({
@@ -280,8 +313,11 @@ function viewOrder(sessionId: string): object {
       line_total: `$${((i.unit_price + i.modifier_delta) * i.quantity).toFixed(2)}`,
       special_note: i.special_note,
     })),
-    subtotal: `$${total.toFixed(2)}`,
-    is_catering: total >= 150,
+    subtotal: `$${subtotal.toFixed(2)}`,
+    tax: `$${tax.toFixed(2)}`,
+    service_fee: `$${SERVICE_FEE.toFixed(2)}`,
+    total: `$${total.toFixed(2)}`,
+    is_catering: subtotal >= 150,
   };
 }
 
@@ -306,19 +342,21 @@ async function placeOrder(
   const cart = orders.get(sessionId) ?? [];
   if (cart.length === 0) return { success: false, message: 'Your order is empty. Please add items before placing the order.' };
 
-  const total = cartTotal(cart);
+  const subtotal = cartTotal(cart);
+  const tax = +(subtotal * TAX_RATE).toFixed(2);
+  const orderTotal = +(subtotal + tax + SERVICE_FEE).toFixed(2);
   const db = getDb();
 
   const orderTx = db.transaction(() => {
     const orderId = uuidv4();
     db.prepare(`INSERT INTO orders (id, restaurant_id, session_id, customer_name, customer_phone, pickup_time, order_type, status, subtotal, special_instructions)
       VALUES (?, ?, ?, ?, ?, ?, 'standard', 'confirmed', ?, ?)`)
-      .run(orderId, restaurantId, sessionId, customerName.trim(), customerPhone.trim(), pickupTime.trim(), +total.toFixed(2), specialInstructions ?? null);
+      .run(orderId, restaurantId, sessionId, customerName.trim(), customerPhone.trim(), pickupTime.trim(), +subtotal.toFixed(2), specialInstructions ?? null);
 
     for (const item of cart) {
       db.prepare(`INSERT INTO order_items (id, order_id, menu_item_id, item_name, quantity, modifiers, unit_price, line_total)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(uuidv4(), orderId, item.item_id, item.name, item.quantity, JSON.stringify(item.modifiers), item.unit_price + item.modifier_delta, +(( item.unit_price + item.modifier_delta) * item.quantity).toFixed(2));
+        .run(uuidv4(), orderId, item.item_id, item.name, item.quantity, JSON.stringify(item.modifiers), item.unit_price + item.modifier_delta, +((item.unit_price + item.modifier_delta) * item.quantity).toFixed(2));
     }
     return orderId;
   });
@@ -326,7 +364,6 @@ async function placeOrder(
   const orderId = orderTx();
   orders.delete(sessionId); // clear cart
 
-  // Get restaurant info for the email
   const restaurant = db.prepare(`SELECT * FROM restaurants WHERE id = ?`).get(restaurantId) as Restaurant | undefined;
   const prep = restaurant?.prep_time_minutes ?? 15;
   const restaurantName = restaurant?.name ?? 'The Maple Table';
@@ -339,7 +376,6 @@ async function placeOrder(
     line_total: `$${((i.unit_price + i.modifier_delta) * i.quantity).toFixed(2)}`,
   }));
 
-  // Fire email without blocking the response
   sendOrderEmail({
     order_id: shortId,
     restaurant_name: restaurantName,
@@ -348,13 +384,12 @@ async function placeOrder(
     pickup_time: pickupTime,
     order_type: 'standard',
     items: emailItems,
-    subtotal: `$${total.toFixed(2)}`,
+    subtotal: `$${subtotal.toFixed(2)}`,
     estimated_ready: `${prep} minutes`,
     special_instructions: specialInstructions,
     timestamp: new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }),
   }).catch(() => { /* already logged inside sendOrderEmail */ });
 
-  // Mirror order to Maya dashboard (awaited so it completes before the tool response returns)
   await postToMayaDashboard({
     order_id: orderId,
     restaurant_id: restaurantId,
@@ -369,7 +404,10 @@ async function placeOrder(
       unit_price: +(i.unit_price + i.modifier_delta).toFixed(2),
       line_total: +((i.unit_price + i.modifier_delta) * i.quantity).toFixed(2),
     })),
-    subtotal: +total.toFixed(2),
+    subtotal: +subtotal.toFixed(2),
+    tax: tax,
+    service_fee: SERVICE_FEE,
+    total: orderTotal,
     estimated_prep_minutes: prep,
     special_instructions: specialInstructions ?? '',
     status: 'confirmed',
@@ -382,9 +420,12 @@ async function placeOrder(
     customer_phone: customerPhone,
     pickup_time: pickupTime,
     items: cart.map(i => ({ name: i.name, quantity: i.quantity, modifiers: i.modifiers })),
-    subtotal: `$${total.toFixed(2)}`,
+    subtotal: `$${subtotal.toFixed(2)}`,
+    tax: `$${tax.toFixed(2)}`,
+    service_fee: `$${SERVICE_FEE.toFixed(2)}`,
+    total: `$${orderTotal.toFixed(2)}`,
     estimated_ready: `${prep} minutes`,
-    message: `Order confirmed! Your order ID is ${shortId}. Estimated ready in ${prep} minutes. See you at ${pickupTime}!`,
+    message: `Order confirmed! Your order ID is ${shortId}. Estimated ready in ${prep} minutes.`,
   };
 }
 
@@ -437,6 +478,49 @@ async function flagCatering(
   };
 }
 
+async function voidOrder(shortOrderId: string, sessionId: string): Promise<object> {
+  const db = getDb();
+  const order = db.prepare(
+    `SELECT * FROM orders WHERE UPPER(SUBSTR(id, 1, 8)) = ? AND session_id = ? AND status = 'confirmed'`
+  ).get(shortOrderId.toUpperCase(), sessionId) as Order | undefined;
+
+  if (!order) {
+    return { success: false, message: `Order ${shortOrderId} not found or cannot be cancelled. It may not belong to this session or was already cancelled.` };
+  }
+
+  db.prepare(`UPDATE orders SET status = 'cancelled' WHERE id = ?`).run(order.id);
+
+  // Restore cart from saved order items so the customer can correct and re-place
+  const rows = db.prepare(`SELECT * FROM order_items WHERE order_id = ?`).all(order.id) as OrderItemRow[];
+  if (rows.length > 0) {
+    orders.set(sessionId, rows.map(r => ({
+      item_id: r.menu_item_id,
+      name: r.item_name,
+      quantity: r.quantity,
+      modifiers: JSON.parse(r.modifiers) as string[],
+      unit_price: r.unit_price,
+      modifier_delta: 0,
+    })));
+  }
+
+  // Best-effort: notify Maya dashboard of cancellation
+  const mayaUrl = process.env.MAYA_DASHBOARD_URL;
+  if (mayaUrl) {
+    fetch(`${mayaUrl}/api/orders/${order.id}/cancel`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'cancelled', reason: 'customer_correction' }),
+    }).catch(() => {});
+  }
+
+  return {
+    success: true,
+    voided_order_id: shortOrderId,
+    cart_restored: rows.map(r => ({ name: r.item_name, quantity: r.quantity })),
+    message: `Order ${shortOrderId} has been cancelled and your previous items have been restored. Please tell me what you'd like to change.`,
+  };
+}
+
 // ── Dispatch ─────────────────────────────────────────────────────────────────
 
 export async function executeTool(toolName: string, input: Record<string, unknown>): Promise<unknown> {
@@ -459,6 +543,8 @@ export async function executeTool(toolName: string, input: Record<string, unknow
       return flagCatering(input.customer_name as string, input.customer_phone as string, input.session_id as string, input.restaurant_id as string ?? 'taqueria_el_coral_santa_teresa', input.event_date as string | undefined, input.headcount as string | undefined, input.notes as string | undefined);
     case 'get_restaurant_info':
       return { info: getRestaurantInfo(input.topic as string | undefined) };
+    case 'void_order':
+      return voidOrder(input.short_order_id as string, input.session_id as string);
     default:
       return { error: `Unknown tool: ${toolName}` };
   }

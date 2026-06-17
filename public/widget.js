@@ -234,7 +234,7 @@
 
   // ── Render messages ──────────────────────────────────────────────────────────
   function renderWelcome() {
-    const welcome = `Welcome to ${restaurantName}! I'm Maya, your order assistant. I can take your order, tell you about the menu, or answer any questions. What can I get you today?`;
+    const welcome = `Hi! Welcome to ${restaurantName}! 🌮\nI'm Maya, your order assistant. Would you like to chat in English or Spanish?\n\n¡Hola! ¡Bienvenido/a a ${restaurantName}! 🌮\nSoy Maya, su asistente de pedidos. ¿Prefiere hablar en inglés o en español?`;
     history = [{ role: 'assistant', content: welcome }];
     saveHistory(history);
     appendBubble('bot', welcome);
@@ -342,7 +342,7 @@
       if (!data.empty && data.items?.length > 0) {
         const count = data.items.reduce((s, i) => s + i.quantity, 0);
         itemCountEl.textContent = `${count} item${count !== 1 ? 's' : ''}`;
-        orderTotalEl.textContent = data.subtotal || '$0.00';
+        orderTotalEl.textContent = data.total || data.subtotal || '$0.00';
         orderBar.classList.add('visible');
       } else {
         orderBar.classList.remove('visible');
