@@ -506,10 +506,10 @@ async function voidOrder(shortOrderId: string, sessionId: string): Promise<objec
   // Best-effort: notify Maya dashboard of cancellation
   const mayaUrl = process.env.MAYA_DASHBOARD_URL;
   if (mayaUrl) {
-    fetch(`${mayaUrl}/api/orders/${order.id}/cancel`, {
+    fetch(`${mayaUrl}/api/orders/${order.id}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'cancelled', reason: 'customer_correction' }),
+      body: JSON.stringify({ status: 'cancelled' }),
     }).catch(() => {});
   }
 
