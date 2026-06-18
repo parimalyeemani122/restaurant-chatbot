@@ -44,15 +44,18 @@
   const css = `
     #maya-widget-btn {
       position: fixed; bottom: 24px; ${position}: 24px; z-index: 99998;
-      width: 60px; height: 60px; border-radius: 50%;
+      height: 52px; border-radius: 26px; padding: 0 20px 0 16px;
       background: ${primaryColor}; color: #fff; border: none; cursor: pointer;
-      font-size: 26px; box-shadow: 0 4px 20px rgba(0,0,0,.25);
-      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 20px rgba(0,0,0,.25);
+      display: flex; align-items: center; justify-content: center; gap: 8px;
       transition: transform .2s, box-shadow .2s;
+      white-space: nowrap;
     }
-    #maya-widget-btn:hover { transform: scale(1.08); box-shadow: 0 6px 28px rgba(0,0,0,.3); }
+    #maya-widget-btn:hover { transform: scale(1.04); box-shadow: 0 6px 28px rgba(0,0,0,.3); }
+    #maya-widget-btn .maya-btn-icon { font-size: 20px; line-height: 1; }
+    #maya-widget-btn .maya-btn-label { font-size: 14px; font-weight: 700; letter-spacing: .1px; }
     #maya-widget-btn .maya-badge {
-      position: absolute; top: -4px; right: -4px;
+      position: absolute; top: -6px; right: -6px;
       background: #ef4444; color: #fff; font-size: 11px; font-weight: 700;
       width: 20px; height: 20px; border-radius: 50%; display: none;
       align-items: center; justify-content: center; border: 2px solid #fff;
@@ -160,7 +163,8 @@
   // ── HTML ────────────────────────────────────────────────────────────────────
   const html = `
     <button id="maya-widget-btn" aria-label="Open chat">
-      💬
+      <span class="maya-btn-icon">💬</span>
+      <span class="maya-btn-label">Chat With Us</span>
       <span class="maya-badge" id="maya-badge">1</span>
     </button>
     <div id="maya-widget-panel" role="dialog" aria-label="Maya Chat">
@@ -174,10 +178,10 @@
       </div>
       <div class="maya-messages" id="maya-messages"></div>
       <div class="maya-quick-prompts" id="maya-quick-prompts">
+        <button class="maya-quick-btn">Santa Teresa Blvd</button>
+        <button class="maya-quick-btn">Capitol Expressway</button>
         <button class="maya-quick-btn">See our menu</button>
-        <button class="maya-quick-btn">Place an order</button>
         <button class="maya-quick-btn">Store hours</button>
-        <button class="maya-quick-btn">Vegetarian options</button>
       </div>
       <div class="maya-order-bar" id="maya-order-bar">
         <span class="maya-order-count" id="maya-item-count">0 items</span>
@@ -235,7 +239,7 @@
 
   // ── Render messages ──────────────────────────────────────────────────────────
   function renderWelcome() {
-    const welcome = `Hi! Welcome to ${restaurantName}! 🌮\nI'm Maya, your order assistant. Would you like to chat in English or Spanish?\n\n¡Hola! ¡Bienvenido/a a ${restaurantName}! 🌮\nSoy Maya, su asistente de pedidos. ¿Prefiere hablar en inglés o en español?`;
+    const welcome = `Hi! Welcome to ${restaurantName}! 🌮 I'm Maya, your order assistant.\n\nFirst — which location are you ordering from?\n\n📍 **Santa Teresa Blvd** (5899 Santa Teresa Blvd #109)\n📍 **Capitol Expressway** (426 W Capitol Expy)\n\n(Also — English or Spanish? ¿Inglés o Español?)`;
     history = [{ role: 'assistant', content: welcome }];
     saveHistory(history);
     appendBubble('bot', welcome);
@@ -345,8 +349,8 @@
       clearTimeout(timeout);
       removeTyping();
       const msg = err && err.name === 'AbortError'
-        ? "That's taking longer than usual — please try again in a moment."
-        : "I'm having a moment — please try again!";
+        ? "That took a bit too long — your order is still saved, just send your message again!"
+        : "I had a hiccup — your order is still saved, just try again!";
       appendBubble('bot', msg);
     } finally {
       isLoading = false;

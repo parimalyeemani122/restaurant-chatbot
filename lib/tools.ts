@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getDb, MenuItem, Order, Restaurant } from './db';
 import { getRestaurantInfo } from './restaurant-info';
-import { sendOrderEmail } from './email';
+import { sendOrderEmail, sendCustomerReceiptEmail } from './email';
 import { v4 as uuidv4 } from 'uuid';
 
 const TAX_RATE = 0.0925; // San Jose, CA sales tax (matches website)
@@ -126,6 +126,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
       properties: {
         customer_name: { type: 'string', description: 'Customer\'s name' },
         customer_phone: { type: 'string', description: 'Customer\'s phone number' },
+        customer_email: { type: 'string', description: 'Customer\'s email address (optional — used to send them a receipt)' },
         pickup_time: { type: 'string', description: 'Requested pickup time (e.g. "6:30 PM", "ASAP")' },
         special_instructions: { type: 'string', description: 'Any overall order notes' },
         session_id: { type: 'string', description: 'Session ID' },
@@ -174,6 +175,73 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
     },
   },
 ];
+
+// ── Pickup time validation ────────────────────────────────────────────────────
+
+// Santa Teresa Blvd hours (minutes since midnight)
+const SANTA_TERESA_HOURS: Record<string, { open: number; close: number } | null> = {
+  monday:    { open: 10 * 60, close: 20 * 60 },
+  tuesday:   { open: 10 * 60, close: 20 * 60 },
+  wednesday: { open: 10 * 60, close: 20 * 60 },
+  thursday:  { open: 10 * 60, close: 20 * 60 },
+  friday:    { open: 10 * 60, close: 20 * 60 },
+  saturday:  { open: 10 * 60, close: 16 * 60 },
+  sunday:    null,
+};
+
+function validatePickupTime(pickupTime: string): { valid: boolean; error?: string } {
+  const pt = pickupTime.trim();
+
+  // ASAP / now → always fine
+  if (/^(asap|now|as soon as possible)$/i.test(pt)) return { valid: true };
+
+  // Future-day orders not allowed online
+  if (/\btomorrow\b|next\s+(week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i.test(pt)) {
+    return {
+      valid: false,
+      error: 'We only accept same-day orders online. For a future order please call us at (669) 248-9997.',
+    };
+  }
+
+  // Get current PT day + time
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles',
+    weekday: 'long', hour: 'numeric', minute: 'numeric', hour12: false,
+  }).formatToParts(now);
+  const dayName = (parts.find(p => p.type === 'weekday')?.value ?? '').toLowerCase();
+
+  const todayHours = SANTA_TERESA_HOURS[dayName];
+  if (todayHours === null) {
+    return {
+      valid: false,
+      error: "We're closed on Sundays at Santa Teresa! Our Capitol Expressway location is open Sun 9 AM–9 PM. Give us a call: (669) 248-9997.",
+    };
+  }
+
+  // Try to parse HH:MM am/pm
+  const m = pt.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
+  if (!m) return { valid: true }; // can't parse — let AI handle it
+
+  let hour = parseInt(m[1]);
+  const min  = parseInt(m[2] ?? '0');
+  const ampm = m[3].toLowerCase();
+  if (ampm === 'pm' && hour !== 12) hour += 12;
+  if (ampm === 'am' && hour === 12) hour = 0;
+
+  const pickupMins = hour * 60 + min;
+  const { open, close } = todayHours;
+
+  if (pickupMins < open || pickupMins > close) {
+    const closeStr = close === 16 * 60 ? '4:00 PM' : '8:00 PM';
+    return {
+      valid: false,
+      error: `${pt} is outside our hours. Santa Teresa is open 10:00 AM–${closeStr} today. Please pick a time within those hours.`,
+    };
+  }
+
+  return { valid: true };
+}
 
 // ── In-memory order store (per session) ──────────────────────────────────────
 
@@ -337,15 +405,22 @@ function removeFromOrder(itemId: string, sessionId: string): object {
 
 async function placeOrder(
   customerName: string, customerPhone: string, pickupTime: string,
-  sessionId: string, restaurantId = 'taqueria_el_coral_santa_teresa', specialInstructions?: string
+  sessionId: string, restaurantId = 'taqueria_el_coral_santa_teresa',
+  specialInstructions?: string, customerEmail?: string
 ): Promise<object> {
   const cart = orders.get(sessionId) ?? [];
   if (cart.length === 0) return { success: false, message: 'Your order is empty. Please add items before placing the order.' };
 
-  // Basic phone validation — must have at least 10 digits
+  // Phone validation — must have at least 10 digits
   const digits = customerPhone.replace(/\D/g, '');
   if (digits.length < 10) {
     return { success: false, message: `"${customerPhone}" doesn't look like a valid phone number. Please ask the customer for their 10-digit phone number.` };
+  }
+
+  // Pickup time validation — same-day and within hours
+  const timeCheck = validatePickupTime(pickupTime);
+  if (!timeCheck.valid) {
+    return { success: false, message: timeCheck.error };
   }
 
   const subtotal = cartTotal(cart);
@@ -382,6 +457,7 @@ async function placeOrder(
     line_total: `$${((i.unit_price + i.modifier_delta) * i.quantity).toFixed(2)}`,
   }));
 
+  const emailTimestamp = new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
   sendOrderEmail({
     order_id: shortId,
     restaurant_name: restaurantName,
@@ -393,8 +469,26 @@ async function placeOrder(
     subtotal: `$${subtotal.toFixed(2)}`,
     estimated_ready: `${prep} minutes`,
     special_instructions: specialInstructions,
-    timestamp: new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }),
+    timestamp: emailTimestamp,
   }).catch(() => { /* already logged inside sendOrderEmail */ });
+
+  if (customerEmail) {
+    sendCustomerReceiptEmail({
+      order_id: shortId,
+      restaurant_name: restaurantName,
+      restaurant_address: '5899 Santa Teresa Blvd #109, San Jose, CA 95123',
+      customer_name: customerName,
+      customer_phone: customerPhone,
+      pickup_time: pickupTime,
+      items: emailItems,
+      subtotal: `$${subtotal.toFixed(2)}`,
+      tax: `$${tax.toFixed(2)}`,
+      service_fee: `$${SERVICE_FEE.toFixed(2)}`,
+      total: `$${orderTotal.toFixed(2)}`,
+      estimated_ready: `${prep} minutes`,
+      timestamp: emailTimestamp,
+    }, customerEmail).catch(() => {});
+  }
 
   await postToMayaDashboard({
     order_id: orderId,
@@ -544,7 +638,7 @@ export async function executeTool(toolName: string, input: Record<string, unknow
     case 'remove_from_order':
       return removeFromOrder(input.item_id as string, input.session_id as string);
     case 'place_order':
-      return placeOrder(input.customer_name as string, input.customer_phone as string, input.pickup_time as string, input.session_id as string, input.restaurant_id as string ?? 'taqueria_el_coral_santa_teresa', input.special_instructions as string | undefined);
+      return placeOrder(input.customer_name as string, input.customer_phone as string, input.pickup_time as string, input.session_id as string, (input.restaurant_id as string) ?? 'taqueria_el_coral_santa_teresa', input.special_instructions as string | undefined, input.customer_email as string | undefined);
     case 'flag_catering':
       return flagCatering(input.customer_name as string, input.customer_phone as string, input.session_id as string, input.restaurant_id as string ?? 'taqueria_el_coral_santa_teresa', input.event_date as string | undefined, input.headcount as string | undefined, input.notes as string | undefined);
     case 'get_restaurant_info':

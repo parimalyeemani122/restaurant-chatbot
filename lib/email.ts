@@ -181,6 +181,149 @@ function buildCateringHtml(o: OrderEmailPayload): string {
 </html>`;
 }
 
+// ── Customer receipt email ─────────────────────────────────────────────────────
+
+interface CustomerReceiptPayload {
+  order_id: string;
+  restaurant_name: string;
+  restaurant_address: string;
+  customer_name: string;
+  customer_phone: string;
+  pickup_time: string;
+  items: { name: string; quantity: number; modifiers: string[]; line_total: string }[];
+  subtotal: string;
+  tax: string;
+  service_fee: string;
+  total: string;
+  estimated_ready: string;
+  timestamp: string;
+}
+
+function buildCustomerReceiptHtml(o: CustomerReceiptPayload): string {
+  const itemRows = o.items
+    .map(i => `
+      <tr>
+        <td style="padding:10px 16px;border-bottom:1px solid #f0ede9;">
+          <span style="font-weight:600;">${i.quantity > 1 ? `${i.quantity}× ` : ''}${i.name}</span>
+          ${i.modifiers.length ? `<br><span style="font-size:12px;color:#78716c;">${i.modifiers.join(' · ')}</span>` : ''}
+        </td>
+        <td style="padding:10px 16px;border-bottom:1px solid #f0ede9;text-align:right;white-space:nowrap;font-weight:600;">
+          ${i.line_total}
+        </td>
+      </tr>`)
+    .join('');
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#fafaf9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#fafaf9;padding:32px 16px;">
+<tr><td align="center">
+<table width="540" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 16px rgba(0,0,0,.1);max-width:100%;">
+
+  <!-- Header -->
+  <tr><td style="background:#92400e;padding:28px 32px;text-align:center;">
+    <p style="margin:0 0 4px;font-size:13px;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:1px;">Order Confirmed</p>
+    <h1 style="margin:0;color:#fff;font-size:26px;font-weight:800;">🌮 ${o.restaurant_name}</h1>
+    <p style="margin:6px 0 0;color:rgba(255,255,255,.8);font-size:14px;">${o.restaurant_address}</p>
+  </td></tr>
+
+  <!-- Order ID / Pickup banner -->
+  <tr><td style="background:#fef3c7;padding:14px 32px;text-align:center;border-bottom:1px solid #fde68a;">
+    <p style="margin:0;font-size:13px;color:#78350f;">
+      <strong style="font-size:18px;letter-spacing:2px;color:#92400e;">#${o.order_id}</strong>
+      &nbsp;·&nbsp; Pickup: <strong>${o.pickup_time}</strong>
+      &nbsp;·&nbsp; Ready in ~<strong>${o.estimated_ready}</strong>
+    </p>
+  </td></tr>
+
+  <!-- Hi customer -->
+  <tr><td style="padding:24px 32px 8px;">
+    <p style="margin:0;font-size:16px;color:#1c1917;">
+      Hi <strong>${o.customer_name}</strong> — your order is all set! 🎉
+    </p>
+    <p style="margin:6px 0 0;font-size:14px;color:#78716c;">
+      Head over to our Santa Teresa location and we'll have it ready for you.
+    </p>
+  </td></tr>
+
+  <!-- Items table -->
+  <tr><td style="padding:12px 32px 0;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #f0ede9;border-radius:10px;overflow:hidden;">
+      <thead>
+        <tr style="background:#fafaf9;">
+          <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#78716c;text-transform:uppercase;letter-spacing:.5px;">Item</th>
+          <th style="padding:10px 16px;text-align:right;font-size:11px;font-weight:700;color:#78716c;text-transform:uppercase;letter-spacing:.5px;">Price</th>
+        </tr>
+      </thead>
+      <tbody>${itemRows}</tbody>
+    </table>
+  </td></tr>
+
+  <!-- Price breakdown -->
+  <tr><td style="padding:16px 32px;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;">
+      <tr>
+        <td style="padding:4px 0;color:#78716c;">Subtotal</td>
+        <td style="padding:4px 0;text-align:right;color:#292524;">${o.subtotal}</td>
+      </tr>
+      <tr>
+        <td style="padding:4px 0;color:#78716c;">Tax (9.25%)</td>
+        <td style="padding:4px 0;text-align:right;color:#292524;">${o.tax}</td>
+      </tr>
+      <tr>
+        <td style="padding:4px 0;color:#78716c;">Service Fee</td>
+        <td style="padding:4px 0;text-align:right;color:#292524;">${o.service_fee}</td>
+      </tr>
+      <tr style="border-top:2px solid #f0ede9;">
+        <td style="padding:10px 0 4px;font-size:16px;font-weight:700;color:#1c1917;">Total</td>
+        <td style="padding:10px 0 4px;text-align:right;font-size:18px;font-weight:800;color:#92400e;">${o.total}</td>
+      </tr>
+    </table>
+  </td></tr>
+
+  <!-- Info box -->
+  <tr><td style="padding:0 32px 24px;">
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 18px;">
+      <p style="margin:0;font-size:13px;color:#166534;font-weight:600;">Payment is collected at pickup</p>
+      <p style="margin:4px 0 0;font-size:13px;color:#166534;">We accept cash, card, and Apple Pay.</p>
+    </div>
+  </td></tr>
+
+  <!-- Footer -->
+  <tr><td style="padding:20px 32px;border-top:1px solid #f0ede9;text-align:center;">
+    <p style="margin:0;font-size:12px;color:#a8a29e;">
+      Questions? Call us at (669) 248-9997<br>
+      Sent by Maya AI · ${o.restaurant_name} · ${o.timestamp}
+    </p>
+  </td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+}
+
+export async function sendCustomerReceiptEmail(payload: CustomerReceiptPayload, customerEmail: string): Promise<void> {
+  const transporter = getTransporter();
+  if (!transporter) return;
+  loadEmailEnv();
+  const from = process.env.SENDGRID_FROM_EMAIL || 'frontline.solutions.team@gmail.com';
+  try {
+    await transporter.sendMail({
+      from: `"${payload.restaurant_name}" <${from}>`,
+      to: customerEmail,
+      subject: `Your order is confirmed! #${payload.order_id} — pickup ${payload.pickup_time}`,
+      html: buildCustomerReceiptHtml(payload),
+    });
+    console.log(`[email] Customer receipt sent → ${customerEmail} (Order: ${payload.order_id})`);
+  } catch (err) {
+    console.error('[email] Failed to send customer receipt:', err instanceof Error ? err.message : err);
+  }
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 export async function sendOrderEmail(payload: OrderEmailPayload): Promise<void> {
