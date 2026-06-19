@@ -219,9 +219,9 @@ function validatePickupTime(pickupTime: string): { valid: boolean; error?: strin
     };
   }
 
-  // Try to parse HH:MM am/pm
+  // Try to parse HH:MM am/pm — AM/PM is required to avoid ambiguous times.
   const m = pt.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
-  if (!m) return { valid: true }; // can't parse — let AI handle it
+  if (!m) return { valid: false, error: `Please specify AM or PM (e.g. "${pt} PM").` };
 
   let hour = parseInt(m[1]);
   const min  = parseInt(m[2] ?? '0');
@@ -232,7 +232,7 @@ function validatePickupTime(pickupTime: string): { valid: boolean; error?: strin
   const pickupMins = hour * 60 + min;
   const { open, close } = todayHours;
 
-  if (pickupMins < open || pickupMins > close) {
+  if (pickupMins < open || pickupMins >= close) {
     const closeStr = close === 16 * 60 ? '4:00 PM' : '8:00 PM';
     return {
       valid: false,
