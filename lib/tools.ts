@@ -192,9 +192,6 @@ const SANTA_TERESA_HOURS: Record<string, { open: number; close: number } | null>
 function validatePickupTime(pickupTime: string): { valid: boolean; error?: string } {
   const pt = pickupTime.trim();
 
-  // ASAP / now → always fine
-  if (/^(asap|now|as soon as possible)$/i.test(pt)) return { valid: true };
-
   // Future-day orders not allowed online
   if (/\btomorrow\b|next\s+(week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i.test(pt)) {
     return {
@@ -203,13 +200,15 @@ function validatePickupTime(pickupTime: string): { valid: boolean; error?: strin
     };
   }
 
-  // Get current PT day + time
+  // Get current PT day + time — needed for all checks below
   const now = new Date();
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Los_Angeles',
     weekday: 'long', hour: 'numeric', minute: 'numeric', hour12: false,
   }).formatToParts(now);
   const dayName = (parts.find(p => p.type === 'weekday')?.value ?? '').toLowerCase();
+  const nowMins = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0') * 60
+                + parseInt(parts.find(p => p.type === 'minute')?.value ?? '0');
 
   const todayHours = SANTA_TERESA_HOURS[dayName];
   if (todayHours === null) {
@@ -217,6 +216,26 @@ function validatePickupTime(pickupTime: string): { valid: boolean; error?: strin
       valid: false,
       error: "We're closed on Sundays at Santa Teresa! Our Capitol Expressway location is open Sun 9 AM–9 PM. Give us a call: (669) 248-9997.",
     };
+  }
+
+  const { open, close } = todayHours;
+  const openStr  = `${Math.floor(open / 60)}:${(open % 60).toString().padStart(2, '0')} ${open < 12 * 60 ? 'AM' : 'PM'}`;
+  const closeStr = close === 16 * 60 ? '4:00 PM' : '8:00 PM';
+
+  // ASAP / now → only valid if the store is open right now
+  if (/^(asap|now|as soon as possible)$/i.test(pt)) {
+    if (nowMins < open) {
+      return { valid: false, error: `We don't open until ${openStr} today. Please choose a pickup time of ${openStr} or later.` };
+    }
+    if (nowMins >= close) {
+      return { valid: false, error: `We've closed for today (we close at ${closeStr}). Please call us tomorrow: (669) 248-9997.` };
+    }
+    return { valid: true };
+  }
+
+  // If the store is already closed for the day, no orders at all
+  if (nowMins >= close) {
+    return { valid: false, error: `We've closed for today (we close at ${closeStr}). Please call us tomorrow: (669) 248-9997.` };
   }
 
   // Try to parse HH:MM am/pm — AM/PM is required to avoid ambiguous times.
@@ -230,13 +249,11 @@ function validatePickupTime(pickupTime: string): { valid: boolean; error?: strin
   if (ampm === 'am' && hour === 12) hour = 0;
 
   const pickupMins = hour * 60 + min;
-  const { open, close } = todayHours;
 
   if (pickupMins < open || pickupMins >= close) {
-    const closeStr = close === 16 * 60 ? '4:00 PM' : '8:00 PM';
     return {
       valid: false,
-      error: `${pt} is outside our hours. Santa Teresa is open 10:00 AM–${closeStr} today. Please pick a time within those hours.`,
+      error: `${pt} is outside our hours. Santa Teresa is open ${openStr}–${closeStr} today. Please pick a time within those hours.`,
     };
   }
 
